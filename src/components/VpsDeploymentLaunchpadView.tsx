@@ -30,10 +30,10 @@ export function VpsDeploymentLaunchpadView() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Step 3: Interactive .env Form State
-  const [rpcUrlInput, setRpcUrlInput] = useState<string>("http://127.0.0.1:8545");
-  const [wsUrlInput, setWsUrlInput] = useState<string>("ws://127.0.0.1:8546");
-  const [privateKeyInput, setPrivateKeyInput] = useState<string>("0x4f3edf983ac636a65a842ce7c78d34567890abcdef1234567890abcdef123456");
-  const [coldWalletInput, setColdWalletInput] = useState<string>("0x8C4dFc045f202AaD306d94Ae6E7a1d81E96B34fD");
+  const [rpcUrlInput, setRpcUrlInput] = useState<string>("https://mainnet.base.org");
+  const [wsUrlInput, setWsUrlInput] = useState<string>("wss://base-rpc.publicnode.com");
+  const [privateKeyInput, setPrivateKeyInput] = useState<string>("0xyour_coinbase_wallet_private_key");
+  const [coldWalletInput, setColdWalletInput] = useState<string>("0xD6d68800CD199D990C7ACCff409bE60c6508660a");
   const [chainIdInput, setChainIdInput] = useState<string>("8453");
   const [gasLimitInput, setGasLimitInput] = useState<string>("35");
   const [minProfitInput, setMinProfitInput] = useState<string>("20.00");
@@ -56,14 +56,17 @@ NODE_ENV=production
 PORT=3000
 
 # EVM BLOCKCHAIN RPC & WEBSOCKET ENDPOINTS
+BASE_RPC_URL=${rpcUrlInput}
 RPC_URL=${rpcUrlInput}
 WS_URL=${wsUrlInput}
 CHAIN_ID=${chainIdInput}
 
 # SIGNER & WALLET KEYS (SECURED)
 PRIVATE_KEY=${privateKeyInput}
+SIGNER_PRIVATE_KEY=${privateKeyInput}
 
-# REALITY BRIDGE (PORT 7777 COLD STORAGE TARGET)
+# OWNER & REALITY BRIDGE TARGET
+OWNER_ADDRESS=${coldWalletInput}
 COLD_STORAGE_ADDRESS=${coldWalletInput}
 REALITY_BRIDGE_URL=http://127.0.0.1:7777
 AUTO_SWEEP_ENABLED=true
