@@ -11,7 +11,7 @@ async function main() {
   console.log("Deployer Address:", deployerAddress);
 
   // Aave V3 PoolAddressesProvider on Base Mainnet
-  const AAVE_V3_BASE_ADDRESSES_PROVIDER = "0xe20fCB0663986601fB0E09A92Ea41c19bF9893aC";
+  const AAVE_V3_BASE_ADDRESSES_PROVIDER = "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D";
   const OWNER_ADDRESS = process.env.OWNER_ADDRESS || "0xD6d68800CD199D990C7ACCff409bE60c6508660a";
 
   console.log("Aave V3 Addresses Provider:", AAVE_V3_BASE_ADDRESSES_PROVIDER);
