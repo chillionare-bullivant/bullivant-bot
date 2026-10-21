@@ -2,6 +2,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 const { ethers } = require("ethers");
+import { sendPrivateTransaction } from "./bot-24-7/src/services/private-tx.js";
 require("dotenv").config();
 
 // Minimal ABIs
@@ -85,17 +86,21 @@ async function triggerExecutionPipeline(botWallet, spread = 0.45, uniPrice = 312
         return;
     }
 
-    const arbitrageContract = new ethers.Contract(ARBITRAGE_CONTRACT_ADDRESS, contractAbi, botWallet);
-
     try {
-        const assetToBorrow = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC
+        const assetToBorrow = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
         const borrowAmount = ethers.parseUnits("5000", 6);
+        const iface = new ethers.Interface(contractAbi);
+        const calldata = iface.encodeFunctionData("requestFlashLoan", [assetToBorrow, borrowAmount]);
 
-        // Send transaction through private RPC provider (Flashbots)
-        const tx = await arbitrageContract.requestFlashLoan(assetToBorrow, borrowAmount, {
-            gasLimit: 350000
-        });
-        console.log(`🔒 Arbitrage payload dispatched privately: ${tx.hash}`);
+        const txData = {
+            to: ARBITRAGE_CONTRACT_ADDRESS,
+            data: calldata,
+            gasLimit: 350000n,
+        };
+
+        // Dispatch through Flashbots Protect / Private Builder to prevent front-running
+        const result = await sendPrivateTransaction(txData, botWallet, botWallet.provider);
+        console.log(`🔒 Arbitrage payload dispatched privately (${result.method}): ${result.txHash || "Bundle Injected"}`);
     } catch (error) {
         console.error("Execution skipped or aborted:", error.reason || error.message);
     }
