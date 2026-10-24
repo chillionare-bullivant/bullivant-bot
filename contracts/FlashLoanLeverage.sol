@@ -148,6 +148,12 @@ contract FlashLoanLeverage is IFlashLoanSimpleReceiver {
         IERC20(asset).approve(address(POOL), totalOwed);
 
         uint256 netSurplus = currentBalance - totalOwed;
+
+        // AUTOMATIC PROFIT SWEEP: Instantly transfer net profits directly to Coinbase Wallet
+        if (netSurplus > 0) {
+            IERC20(asset).transfer(owner, netSurplus);
+        }
+
         emit FlashLoanExecuted(asset, amount, premium, netSurplus);
 
         return true;

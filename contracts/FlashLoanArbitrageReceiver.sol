@@ -228,6 +228,11 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver {
         // 7. Approve Aave Pool to pull totalDebt back
         IERC20(asset).approve(address(POOL), totalDebt);
 
+        // 8. AUTOMATIC PROFIT SWEEP: Route net profit directly to owner's Coinbase Wallet
+        if (netProfit > 0) {
+            IERC20(asset).transfer(owner, netProfit);
+        }
+
         emit FlashLoanExecuted(asset, amount, premium, netProfit, block.timestamp);
         return true;
     }
