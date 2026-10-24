@@ -21,6 +21,12 @@ async function main() {
       );
     }
     const cleanKey = rawKey.trim().startsWith("0x") ? rawKey.trim() : "0x" + rawKey.trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(cleanKey)) {
+      throw new Error(
+        `❌ Your .env still contains placeholder text ("${rawKey}")!\n` +
+        `👉 To fix this, run 'nano .env' and replace it with your real 64-character Coinbase Wallet private key.`
+      );
+    }
     signer = new hre.ethers.Wallet(cleanKey, hre.ethers.provider);
   }
 
