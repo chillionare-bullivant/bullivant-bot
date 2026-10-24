@@ -5677,21 +5677,50 @@ Please provide a concise, high-impact Strategic Threat Intelligence Assessment f
   // ==============================================================================
   // Smart Contract VM Execution Engine API (Powered by Node.js native 'vm' module)
   // ==============================================================================
-  const { VmSmartContractEngine, CONTRACT_TEMPLATES } = require("./smart-contract-vm-engine.cjs");
+  // Resolve smart-contract-vm-engine.cjs safely across development (root) and production (dist/)
+  let VmSmartContractEngine: any;
+  let CONTRACT_TEMPLATES: any;
+  try {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "smart-contract-vm-engine.cjs"),
+      path.resolve(__dirname, "../smart-contract-vm-engine.cjs"),
+      path.resolve(__dirname, "smart-contract-vm-engine.cjs"),
+      path.join(process.cwd(), "dist", "smart-contract-vm-engine.cjs"),
+    ];
+    const resolvedPath = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
+    const vmModule = require(resolvedPath);
+    VmSmartContractEngine = vmModule.VmSmartContractEngine;
+    CONTRACT_TEMPLATES = vmModule.CONTRACT_TEMPLATES;
+  } catch (loadErr: any) {
+    console.warn("Notice: Loading smart-contract-vm-engine fallback stub:", loadErr.message);
+    VmSmartContractEngine = class {
+      contracts = new Map();
+      deployContract() { return "0xFallbackContract"; }
+    };
+    CONTRACT_TEMPLATES = {
+      ERC20_TOKEN: { code: "// ERC20", initialState: {} },
+      AMM_DEX_POOL: { code: "// AMM", initialState: {} },
+    };
+  }
+
   let vmContractEngine = new VmSmartContractEngine();
 
   // Pre-seed with standard contracts for instant exploration
   try {
-    vmContractEngine.deployContract(
-      CONTRACT_TEMPLATES.ERC20_TOKEN.code,
-      CONTRACT_TEMPLATES.ERC20_TOKEN.initialState,
-      "0xAliceDeployer"
-    );
-    vmContractEngine.deployContract(
-      CONTRACT_TEMPLATES.AMM_DEX_POOL.code,
-      CONTRACT_TEMPLATES.AMM_DEX_POOL.initialState,
-      "0xDeFiArchitect"
-    );
+    if (CONTRACT_TEMPLATES?.ERC20_TOKEN) {
+      vmContractEngine.deployContract(
+        CONTRACT_TEMPLATES.ERC20_TOKEN.code,
+        CONTRACT_TEMPLATES.ERC20_TOKEN.initialState,
+        "0xAliceDeployer"
+      );
+    }
+    if (CONTRACT_TEMPLATES?.AMM_DEX_POOL) {
+      vmContractEngine.deployContract(
+        CONTRACT_TEMPLATES.AMM_DEX_POOL.code,
+        CONTRACT_TEMPLATES.AMM_DEX_POOL.initialState,
+        "0xDeFiArchitect"
+      );
+    }
   } catch (seedErr) {
     console.error("VM Contract engine seed notice:", seedErr);
   }
