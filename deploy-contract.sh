@@ -14,8 +14,16 @@ if ! grep -q "PRIVATE_KEY" .env 2>/dev/null; then
 fi
 
 npx hardhat compile
-npx hardhat run scripts/deploy.js --network base
+
+if [ -f "scripts/deploy.cjs" ]; then
+  npx hardhat run scripts/deploy.cjs --network base
+elif [ -f "scripts/deploy.js" ]; then
+  npx hardhat run scripts/deploy.js --network base
+else
+  echo "❌ Neither scripts/deploy.cjs nor scripts/deploy.js found."
+  exit 1
+fi
 
 echo "=================================================="
-echo "✅ Deployment finished!"
+echo "✅ Deployment finished successfully!"
 echo "=================================================="
