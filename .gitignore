@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 .aistudio/
+artifacts/
+cache/
+typechain/
+typechain-types/
+
