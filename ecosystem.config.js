@@ -1,22 +1,25 @@
+import fs from "fs";
+
+const scriptToRun = fs.existsSync("./dist/server.cjs") ? "./dist/server.cjs" : "server.ts";
+const isTs = scriptToRun.endsWith(".ts");
+
 export default {
   apps: [
     {
-      name: "dex-trading-engine",
-      script: "server.ts",
-      interpreter: "node",
-      interpreter_args: "--import tsx",
+      name: "bullivant-engine",
+      script: scriptToRun,
+      interpreter: isTs ? "node" : undefined,
+      interpreter_args: isTs ? "--import tsx" : undefined,
       instances: 1,
+      exec_mode: "fork",
       autorestart: true,
       watch: false,
-      max_memory_restart: "800M",
+      max_memory_restart: "600M",
       env: {
         NODE_ENV: "production",
         PORT: 3000,
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-      error_file: "./logs/err.log",
-      out_file: "./logs/out.log",
-      merge_logs: true,
     },
   ],
 };
