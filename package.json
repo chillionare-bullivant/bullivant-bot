@@ -7,6 +7,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && cp -f smart-contract-vm-engine.cjs dist/ 2>/dev/null || true",
     "start": "node dist/server.cjs",
+    "deploy:contract": "hardhat run scripts/deploy.js --network base",
     "run:script": "node index.js",
     "run:stream": "node stream.js",
     "run:chat": "node chat.js",
