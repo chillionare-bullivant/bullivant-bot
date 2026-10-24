@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { ethers } from "ethers";
 import { copyToClipboard } from "../utils/clipboard";
+import { FLASH_LOAN_LEVERAGE_ABI, FLASH_LOAN_LEVERAGE_BYTECODE } from "../contracts/FlashLoanLeverageArtifact";
 
 declare global {
   interface Window {
@@ -96,7 +97,63 @@ export function BaseFlashLoanDashboard() {
   const [walletBalanceEth, setWalletBalanceEth] = useState<string | null>(null);
   const [isCorrectNetwork, setIsCorrectNetwork] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [isDeployingContract, setIsDeployingContract] = useState<boolean>(false);
   const [executionMode, setExecutionMode] = useState<"browser" | "server">("browser");
+
+  const deployContractFromBrowser = async () => {
+    const eth = window.coinbaseWalletExtension || window.ethereum;
+    if (!eth) {
+      setStatusMsg("Coinbase Wallet not detected. Please ensure you are inside Coinbase Wallet browser.");
+      setStatusType("error");
+      return;
+    }
+    try {
+      setIsDeployingContract(true);
+      setStatusMsg("Requesting contract deployment approval in Coinbase Wallet (~$0.04 gas)...");
+      setStatusType("info");
+
+      if (!isCorrectNetwork) {
+        await switchToBaseNetwork();
+      }
+
+      const provider = new ethers.BrowserProvider(eth);
+      const signer = await provider.getSigner();
+      const currentAddress = await signer.getAddress();
+
+      const factory = new ethers.ContractFactory(
+        FLASH_LOAN_LEVERAGE_ABI,
+        FLASH_LOAN_LEVERAGE_BYTECODE,
+        signer
+      );
+
+      // Deploy with Aave V3 Base provider and user's wallet as owner
+      const contract = await factory.deploy(
+        "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
+        currentAddress
+      );
+
+      const deployTx = contract.deploymentTransaction();
+      setStatusMsg(`Deploy broadcast: ${deployTx?.hash?.slice(0, 14)}... Waiting for Base confirmation.`);
+      await contract.waitForDeployment();
+
+      const deployedAddr = await contract.getAddress();
+      setCustomContractAddress(deployedAddr);
+      setContractHasBytecode(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("bullivant_receiver_contract", deployedAddr);
+      }
+
+      setStatusMsg(`🎉 Flash loan contract deployed to Base: ${deployedAddr}! Connected and ready for live execution.`);
+      setStatusType("success");
+      setTxUrl(`https://basescan.org/address/${deployedAddr}`);
+      await refreshWalletBalance(currentAddress);
+    } catch (err: any) {
+      setStatusMsg(`Deployment failed: ${err.reason || err.message}`);
+      setStatusType("error");
+    } finally {
+      setIsDeployingContract(false);
+    }
+  };
 
   useEffect(() => {
     fetchContractStatus();
@@ -459,8 +516,28 @@ export function BaseFlashLoanDashboard() {
 
     const eth = window.coinbaseWalletExtension || window.ethereum;
 
+    let activeAddress = walletAddress;
+    // Auto-connect if in Coinbase Wallet and not yet connected
+    if (!activeAddress && eth) {
+      try {
+        setStatusMsg("Connecting to Coinbase Wallet...");
+        setStatusType("info");
+        const accounts = await eth.request({ method: "eth_requestAccounts" });
+        if (accounts && accounts.length > 0) {
+          activeAddress = accounts[0];
+          setWalletAddress(activeAddress);
+          await refreshWalletBalance(activeAddress);
+        }
+      } catch (err: any) {
+        setStatusMsg("Wallet connection was not approved. Tap 'Connect Wallet' to retry.");
+        setStatusType("error");
+        setLoading(false);
+        return;
+      }
+    }
+
     // MODE 1: Execute directly with user's Browser Coinbase Wallet
-    if (executionMode === "browser" && walletAddress && eth) {
+    if (executionMode === "browser" && activeAddress && eth) {
       setStatusMsg("Checking Base network and contract verification...");
       setStatusType("info");
 
@@ -477,7 +554,7 @@ export function BaseFlashLoanDashboard() {
         // Check if bytecode exists on Base Mainnet
         const code = await provider.getCode(contractAddress).catch(() => "0x");
         if (!code || code === "0x" || code === "0x0") {
-          setStatusMsg("Notice: Flash loan receiver contract is not yet deployed on Base Mainnet. To execute immediately without deploying, tap 'Server Bot' above (instant profit sweep), or deploy FlashLoanArbitrageReceiver using the Hardhat guide below.");
+          setStatusMsg("Notice: Flash loan receiver contract not yet deployed on Base Mainnet. Tap 'Deploy Receiver Contract with Coinbase Wallet' below to deploy in 1 tap, or select 'Server Bot' above!");
           setStatusType("error");
           setLoading(false);
           return;
@@ -1304,6 +1381,42 @@ export function BaseFlashLoanDashboard() {
             </button>
           ))}
         </div>
+
+        {/* 1-Tap Connect & In-Browser Deploy Helpers */}
+        {!walletAddress && (
+          <button
+            type="button"
+            onClick={connectWallet}
+            disabled={isConnecting}
+            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-xl cursor-pointer text-xs sm:text-sm transition-all"
+          >
+            {isConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+            <span>1-Tap: Connect Coinbase Wallet ({COINBASE_USER_ADDRESS.slice(0, 6)}...{COINBASE_USER_ADDRESS.slice(-4)})</span>
+          </button>
+        )}
+
+        {walletAddress && !contractHasBytecode && (
+          <div className="p-3.5 bg-amber-950/70 border border-amber-500/50 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between text-xs text-amber-200">
+              <span className="font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" /> Receiver Contract Not Yet Deployed on Base
+              </span>
+              <span className="font-mono text-zinc-400">Gas: ~$0.04 ETH</span>
+            </div>
+            <p className="text-[11px] text-zinc-300">
+              To trigger flash loans directly from Coinbase Wallet, deploy your FlashLoanLeverage receiver contract to Base Mainnet in 1-tap using your wallet:
+            </p>
+            <button
+              type="button"
+              onClick={deployContractFromBrowser}
+              disabled={isDeployingContract}
+              className="w-full py-2.5 px-3 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow transition-all"
+            >
+              {isDeployingContract ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-yellow-300" />}
+              <span>{isDeployingContract ? "Broadcasting to Base (~$0.04)..." : "1-Tap: Deploy Receiver Contract with Coinbase Wallet (~$0.04)"}</span>
+            </button>
+          </div>
+        )}
 
         <button
           type="submit"
