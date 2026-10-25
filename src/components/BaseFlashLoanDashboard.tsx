@@ -103,7 +103,7 @@ export function BaseFlashLoanDashboard() {
   const deployContractFromBrowser = async () => {
     const eth = window.coinbaseWalletExtension || window.ethereum;
     if (!eth) {
-      setStatusMsg("Coinbase Wallet not detected. Please ensure you are inside Coinbase Wallet browser.");
+      setStatusMsg("Coinbase Wallet Web3 not detected. Please make sure you are inside Coinbase Wallet mobile browser.");
       setStatusType("error");
       return;
     }
@@ -112,13 +112,25 @@ export function BaseFlashLoanDashboard() {
       setStatusMsg("Requesting contract deployment approval in Coinbase Wallet (~$0.04 gas)...");
       setStatusType("info");
 
-      if (!isCorrectNetwork) {
+      // Auto-connect wallet first
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
+      if (!accounts || accounts.length === 0) {
+        setStatusMsg("Wallet connection cancelled. Please approve connection to deploy.");
+        setStatusType("error");
+        setIsDeployingContract(false);
+        return;
+      }
+      const activeUser = accounts[0];
+      setWalletAddress(activeUser);
+
+      try {
         await switchToBaseNetwork();
+      } catch (netErr) {
+        console.warn("Network switch warning:", netErr);
       }
 
       const provider = new ethers.BrowserProvider(eth);
       const signer = await provider.getSigner();
-      const currentAddress = await signer.getAddress();
 
       const factory = new ethers.ContractFactory(
         FLASH_LOAN_LEVERAGE_ABI,
@@ -129,7 +141,7 @@ export function BaseFlashLoanDashboard() {
       // Deploy with Aave V3 Base provider and user's wallet as owner
       const contract = await factory.deploy(
         "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
-        currentAddress
+        activeUser
       );
 
       const deployTx = contract.deploymentTransaction();
@@ -146,7 +158,7 @@ export function BaseFlashLoanDashboard() {
       setStatusMsg(`🎉 Flash loan contract deployed to Base: ${deployedAddr}! Connected and ready for live execution.`);
       setStatusType("success");
       setTxUrl(`https://basescan.org/address/${deployedAddr}`);
-      await refreshWalletBalance(currentAddress);
+      await refreshWalletBalance(activeUser);
     } catch (err: any) {
       setStatusMsg(`Deployment failed: ${err.reason || err.message}`);
       setStatusType("error");
@@ -1408,28 +1420,54 @@ export function BaseFlashLoanDashboard() {
           </button>
         )}
 
-        {walletAddress && !contractHasBytecode && (
-          <div className="p-3.5 bg-amber-950/70 border border-amber-500/50 rounded-xl space-y-2.5">
-            <div className="flex items-center justify-between text-xs text-amber-200">
-              <span className="font-semibold flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" /> Receiver Contract Not Yet Deployed on Base
-              </span>
-              <span className="font-mono text-zinc-400">Gas: ~$0.04 ETH</span>
+        {/* PERMANENT IN-APP CONTRACT DEPLOYER CARD */}
+        <div className="p-4 bg-gradient-to-br from-blue-950/90 via-indigo-950/70 to-zinc-900 border border-blue-500/50 rounded-2xl space-y-3 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-blue-600 text-white font-bold">
+                <FileCode className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-xs sm:text-sm">Flash Loan Receiver Contract</h4>
+                <p className="text-[11px] text-zinc-300">
+                  {contractHasBytecode
+                    ? `Deployed on Base: ${(customContractAddress || contractData?.contractAddress || "").slice(0, 8)}...`
+                    : "Deploy FlashLoanLeverage to Base Mainnet (~$0.04). Required for real flash loans."}
+                </p>
+              </div>
             </div>
-            <p className="text-[11px] text-zinc-300">
-              To trigger flash loans directly from Coinbase Wallet, deploy your FlashLoanLeverage receiver contract to Base Mainnet in 1-tap using your wallet:
-            </p>
-            <button
-              type="button"
-              onClick={deployContractFromBrowser}
-              disabled={isDeployingContract}
-              className="w-full py-2.5 px-3 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow transition-all"
-            >
-              {isDeployingContract ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-yellow-300" />}
-              <span>{isDeployingContract ? "Broadcasting to Base (~$0.04)..." : "1-Tap: Deploy Receiver Contract with Coinbase Wallet (~$0.04)"}</span>
-            </button>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border shrink-0 ${
+              contractHasBytecode
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                : "bg-blue-500/20 text-blue-300 border-blue-500/40"
+            }`}>
+              {contractHasBytecode ? "✓ Deployed" : "Gas ~$0.04"}
+            </span>
           </div>
-        )}
+
+          <button
+            type="button"
+            onClick={deployContractFromBrowser}
+            disabled={isDeployingContract}
+            className="w-full py-3 px-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-all"
+          >
+            {isDeployingContract ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Confirming in Coinbase Wallet (~$0.04)...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 text-yellow-300" />
+                <span>
+                  {contractHasBytecode
+                    ? "Redeploy / Update Contract with Coinbase Wallet (~$0.04)"
+                    : "🚀 1-Tap: Deploy Receiver Contract with Coinbase Wallet (~$0.04)"}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
 
         <button
           type="submit"
