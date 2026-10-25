@@ -1188,9 +1188,17 @@ async function startServer() {
     if (override && ethers.isAddress(override)) {
       return override;
     }
-    const envAddr = process.env.BASE_FLASHLOAN_CONTRACT_ADDRESS || process.env.ARBITRAGE_CONTRACT_ADDRESS;
+    const envAddr = process.env.BASE_FLASHLOAN_CONTRACT_ADDRESS || process.env.LEVERAGE_CONTRACT_ADDRESS || process.env.ARBITRAGE_CONTRACT_ADDRESS;
     if (envAddr && ethers.isAddress(envAddr)) {
       return envAddr;
+    }
+    if (fs.existsSync("./deployed_contract.json")) {
+      try {
+        const data = JSON.parse(fs.readFileSync("./deployed_contract.json", "utf8"));
+        if (data.contractAddress && ethers.isAddress(data.contractAddress)) {
+          return data.contractAddress;
+        }
+      } catch {}
     }
     return BASE_CORE_CONTRACTS.defaultArbitrageContract;
   }

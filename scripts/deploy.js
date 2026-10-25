@@ -68,10 +68,24 @@ async function main() {
   console.log("Owner Beneficiary:", OWNER_ADDRESS);
   console.log("BaseScan Explorer: https://basescan.org/address/" + contractAddress);
   console.log("==================================================");
-  console.log("\nAdd this to your .env file on VPS:");
-  console.log(`FLASH_LOAN_CONTRACT_ADDRESS=${contractAddress}`);
-  console.log(`LEVERAGE_CONTRACT_ADDRESS=${contractAddress}`);
-  console.log("==================================================");
+
+  const fs = require("fs");
+  try {
+    fs.writeFileSync("./deployed_contract.json", JSON.stringify({
+      contractAddress,
+      owner: OWNER_ADDRESS,
+      deployedAt: new Date().toISOString(),
+    }, null, 2));
+
+    let envContent = fs.existsSync(".env") ? fs.readFileSync(".env", "utf8") : "";
+    envContent = envContent.replace(/BASE_FLASHLOAN_CONTRACT_ADDRESS=.*/g, "");
+    envContent = envContent.replace(/LEVERAGE_CONTRACT_ADDRESS=.*/g, "");
+    envContent += `\nBASE_FLASHLOAN_CONTRACT_ADDRESS=${contractAddress}\nLEVERAGE_CONTRACT_ADDRESS=${contractAddress}\n`;
+    fs.writeFileSync(".env", envContent);
+    console.log("✅ Auto-saved contract address to .env and deployed_contract.json!");
+  } catch (saveErr) {
+    console.warn("Notice: could not auto-write to .env", saveErr.message);
+  }
 }
 
 main().catch((error) => {
