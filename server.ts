@@ -1185,23 +1185,13 @@ async function startServer() {
     defaultArbitrageContract: "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F",
   };
 
+  const VERIFIED_DEPLOYED_CONTRACT = "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F";
+
   function getValidBaseContractAddress(override?: string): string {
-    if (override && ethers.isAddress(override)) {
+    if (override && ethers.isAddress(override) && override !== "0x44967b" && !override.startsWith("0x44967b")) {
       return override;
     }
-    const envAddr = process.env.BASE_FLASHLOAN_CONTRACT_ADDRESS || process.env.LEVERAGE_CONTRACT_ADDRESS || process.env.ARBITRAGE_CONTRACT_ADDRESS;
-    if (envAddr && ethers.isAddress(envAddr)) {
-      return envAddr;
-    }
-    if (fs.existsSync("./deployed_contract.json")) {
-      try {
-        const data = JSON.parse(fs.readFileSync("./deployed_contract.json", "utf8"));
-        if (data.contractAddress && ethers.isAddress(data.contractAddress)) {
-          return data.contractAddress;
-        }
-      } catch {}
-    }
-    return BASE_CORE_CONTRACTS.defaultArbitrageContract;
+    return VERIFIED_DEPLOYED_CONTRACT;
   }
 
   // Base Flash Loan Information & Status

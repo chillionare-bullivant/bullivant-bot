@@ -53,7 +53,9 @@ const COINBASE_USER_ADDRESS = "0xD6d68800CD199D990C7ACCff409bE60c6508660a";
 const DEFAULT_CONTRACT_ADDRESS = "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F";
 
 function toSafeAddress(addr?: string | null): string {
-  if (!addr) return DEFAULT_CONTRACT_ADDRESS;
+  if (!addr || !ethers.isAddress(addr) || addr.toLowerCase().startsWith("0x44967b") || addr.toLowerCase().startsWith("0x6b2d")) {
+    return DEFAULT_CONTRACT_ADDRESS;
+  }
   try {
     return ethers.getAddress(addr.toLowerCase());
   } catch {
