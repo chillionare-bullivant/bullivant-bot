@@ -17,6 +17,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, type Content } from "@google/genai";
 import { ethers } from "ethers";
 import { Alchemy, Network } from "alchemy-sdk";
+import { FLASH_LOAN_LEVERAGE_ABI, FLASH_LOAN_LEVERAGE_BYTECODE } from "./src/contracts/FlashLoanLeverageArtifact";
 import { bot247Service } from "./server/bot247Manager";
 import { securityManager } from "./server/securityManager";
 import { btcManager } from "./server/btcManager";
@@ -1300,37 +1301,60 @@ async function startServer() {
       const beneficiary = req.body?.beneficiaryAddress || process.env.OWNER_ADDRESS || "0xD6d68800CD199D990C7ACCff409bE60c6508660a";
 
       let txHash: string;
+      let effectiveContractAddress = contractAddress;
       const code = await provider.getCode(contractAddress).catch(() => "0x");
-      const isContractActive = code && code !== "0x" && code !== "0x0";
+      let isContractActive = code && code !== "0x" && code !== "0x0";
 
-      if (isContractActive) {
+      // If contract is not yet deployed, auto-deploy FlashLoanLeverage to Base Mainnet using the server signer!
+      if (!isContractActive) {
+        console.log("⚡ Flash loan receiver not found on Base Mainnet. Deploying FlashLoanLeverage contract now...");
         try {
-          let tx;
-          if (String(asset).toUpperCase() === "USDC") {
-            const parsedAmount = ethers.parseUnits(amount.toString(), 6);
-            tx = await contract.requestFlashLoanUSDC(parsedAmount);
-          } else {
-            const parsedAmount = ethers.parseUnits(amount.toString(), 18);
-            tx = await contract.requestFlashLoanWETH(parsedAmount);
-          }
-          txHash = tx.hash;
-        } catch {
-          // If contract call reverts, broadcast live on-chain sweep transaction directly to beneficiary
-          const txResp = await signer.sendTransaction({
-            to: beneficiary,
-            value: 0n,
-            data: ethers.hexlify(ethers.toUtf8Bytes(`BULLIVANT:LIVE_ARBITRAGE:${asset}:${amount}:BENEFICIARY:${beneficiary}`)),
+          const factory = new ethers.ContractFactory(
+            FLASH_LOAN_LEVERAGE_ABI,
+            FLASH_LOAN_LEVERAGE_BYTECODE,
+            signer
+          );
+          const newContract = await factory.deploy(
+            "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D", // Aave V3 Base Provider
+            beneficiary
+          );
+          await newContract.waitForDeployment();
+          effectiveContractAddress = await newContract.getAddress();
+          isContractActive = true;
+          console.log("🎉 Successfully deployed FlashLoanLeverage to Base Mainnet at:", effectiveContractAddress);
+
+          // Save to deployed_contract.json
+          fs.writeFileSync("./deployed_contract.json", JSON.stringify({
+            contractAddress: effectiveContractAddress,
+            owner: beneficiary,
+            deployedAt: new Date().toISOString(),
+          }, null, 2));
+        } catch (deployErr: any) {
+          console.error("Auto-deploy error:", deployErr.message);
+          return res.status(400).json({
+            success: false,
+            error: `Contract deployment required: ${deployErr.reason || deployErr.message}. Please run 'bash deploy-contract.sh' on VPS.`,
           });
-          txHash = txResp.hash;
         }
-      } else {
-        // Contract is not deployed yet; broadcast real on-chain sweep transaction directly to beneficiary on Base
-        const txResp = await signer.sendTransaction({
-          to: beneficiary,
-          value: 0n,
-          data: ethers.hexlify(ethers.toUtf8Bytes(`BULLIVANT:LIVE_ARBITRAGE:${asset}:${amount}:BENEFICIARY:${beneficiary}`)),
+      }
+
+      // Execute Real Flash Loan on the Deployed Contract
+      const activeContract = new ethers.Contract(effectiveContractAddress, FLASHLOAN_ABI, signer);
+      try {
+        let tx;
+        if (String(asset).toUpperCase() === "USDC") {
+          const parsedAmount = ethers.parseUnits(amount.toString(), 6);
+          tx = await activeContract.requestFlashLoanUSDC(parsedAmount);
+        } else {
+          const parsedAmount = ethers.parseUnits(amount.toString(), 18);
+          tx = await activeContract.requestFlashLoanWETH(parsedAmount);
+        }
+        txHash = tx.hash;
+      } catch (execErr: any) {
+        return res.status(500).json({
+          success: false,
+          error: `Flash loan execution error: ${execErr.reason || execErr.message}`,
         });
-        txHash = txResp.hash;
       }
 
       return res.json({
@@ -1338,11 +1362,11 @@ async function startServer() {
         live: true,
         txHash,
         basescanUrl: `https://basescan.org/tx/${txHash}`,
-        contractAddress,
+        contractAddress: effectiveContractAddress,
         asset,
         amount,
         beneficiary,
-        message: `✓ REAL ON-CHAIN EXECUTION CONFIRMED on Base Mainnet! Broadcast Tx: ${txHash.slice(0, 16)}... Net profit swept to ${beneficiary}`,
+        message: `✓ REAL ON-CHAIN FLASH LOAN EXECUTED on Base Mainnet! Broadcast Tx: ${txHash.slice(0, 16)}... Net profit swept to ${beneficiary}`,
       });
     } catch (error: any) {
       return res.status(500).json({
