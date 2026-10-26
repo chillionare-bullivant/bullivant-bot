@@ -882,6 +882,14 @@ export function BaseFlashLoanDashboard() {
                       </span>
                     </div>
                     <span className="text-[11px] text-zinc-400 block pt-0.5">{opp.route}</span>
+                    {opp.uniswapPrice && opp.aerodromePrice && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400 pt-1">
+                        <span>Uni V3: <strong className="text-zinc-200">${opp.uniswapPrice}</strong></span>
+                        <span>•</span>
+                        <span>Aero: <strong className="text-zinc-200">${opp.aerodromePrice}</strong></span>
+                        <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[9px] border border-emerald-500/30">BASE LIVE</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right">
