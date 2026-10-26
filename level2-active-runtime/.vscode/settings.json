@@ -1,5 +1,0 @@
-{
-  "jest.workspaceRoots": ["apps/*", "libs/*"],
-  "jest.jestCommandLine": "npx jest",
-  "debug.javascript.autoAttachFilter": "smart"
-}

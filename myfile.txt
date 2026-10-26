@@ -1,2 +1,0 @@
-Hello! This is the content of myfile.txt.
-Node.js processes this file asynchronously without blocking the single-threaded event loop!
