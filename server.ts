@@ -1182,10 +1182,10 @@ async function startServer() {
     usdbc: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
     weth: "0x4200000000000000000000000000000000000006",
     cbeth: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22",
-    defaultArbitrageContract: "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F",
+    defaultArbitrageContract: "0x162051AE566AE663501CF8E181186976Ae9474d0",
   };
 
-  const VERIFIED_DEPLOYED_CONTRACT = "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F";
+  const VERIFIED_DEPLOYED_CONTRACT = "0x162051AE566AE663501CF8E181186976Ae9474d0";
 
   function getValidBaseContractAddress(override?: string): string {
     if (override && ethers.isAddress(override) && override !== "0x44967b" && !override.startsWith("0x44967b")) {

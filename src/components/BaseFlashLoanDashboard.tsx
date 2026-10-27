@@ -50,7 +50,7 @@ interface ContractData {
 const BASE_CHAIN_ID_HEX = "0x2105"; // 8453 in hex
 const BASE_CHAIN_ID_DEC = 8453;
 const COINBASE_USER_ADDRESS = "0xD6d68800CD199D990C7ACCff409bE60c6508660a";
-const DEFAULT_CONTRACT_ADDRESS = "0xD66d44ba2B16A6EB657752419FD8475Dc42CC11F";
+const DEFAULT_CONTRACT_ADDRESS = "0x162051AE566AE663501CF8E181186976Ae9474d0";
 
 function toSafeAddress(addr?: string | null): string {
   if (!addr || !ethers.isAddress(addr) || addr.toLowerCase().startsWith("0x44967b") || addr.toLowerCase().startsWith("0x6b2d")) {
