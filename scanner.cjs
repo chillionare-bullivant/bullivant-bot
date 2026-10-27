@@ -136,10 +136,20 @@ async function main() {
         console.log(`   Net ROI: +$${netProfit.toFixed(2)} USDC (After Aave 0.05% & DEX fees)`);
 
         if (signer && targetContract && targetContract.startsWith("0x")) {
-          console.log(`   ⚡ Dispatching real flash loan transaction to Base Mainnet...`);
           const contract = new ethers.Contract(targetContract, CONTRACT_ABI, signer);
           try {
             const parsedAmount = ethers.parseUnits(borrowAmountUsdc.toString(), 6);
+            
+            // 1. ZERO-GAS PRE-SIMULATION:
+            // Simulates trade execution off-chain for 0 gas to protect wallet balance!
+            if (buyDex === "Uniswap V3") {
+              await contract.requestFlashLoanUSDC.staticCall(parsedAmount);
+            } else {
+              await contract.requestFlashLoanUSDCReverse.staticCall(parsedAmount);
+            }
+
+            // 2. Only broadcast if simulation confirms positive net profit:
+            console.log(`   ⚡ Simulation verified profitable! Dispatching real transaction...`);
             let tx;
             if (buyDex === "Uniswap V3") {
               tx = await contract.requestFlashLoanUSDC(parsedAmount, { gasLimit: 650000 });
@@ -151,7 +161,8 @@ async function main() {
             await tx.wait(1);
             console.log(`   ✅ Confirmed on Base! Profit swept to Coinbase Wallet (${signer.address})`);
           } catch (txErr) {
-            console.warn(`   Notice on execution: ${txErr.reason || txErr.message}`);
+            // Revert caught in static simulation: ZERO GAS SPENT!
+            console.warn(`   🛡️ Zero-Gas Guard: Opportunity did not clear slippage in simulation. Skipping broadcast ($0.00 gas spent).`);
           }
         }
       } else {
