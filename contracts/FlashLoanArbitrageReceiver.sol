@@ -2,10 +2,12 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title FlashLoanArbitrageReceiver
- * @notice Production-ready Aave V3 / Balancer Flash Loan Arbitrage Contract
- * @dev Designed for zero-mempool private execution via Flashbots Protect / MEV-Blocker.
- *      Includes strict slippage bounds, zero-loss reverts, and non-reentrant execution.
+ * ==============================================================================
+ * FLASH LOAN ARBITRAGE RECEIVER (BASE MAINNET - CHAIN ID 8453)
+ * ==============================================================================
+ * Borrows flash loans from Aave V3 on Base, executes cross-DEX atomic arbitrage
+ * between Uniswap V3 and SushiSwap/Aerodrome, repays Aave, and transfers 100%
+ * of net profits directly to the owner's Coinbase Wallet.
  */
 
 interface IERC20 {
@@ -73,6 +75,10 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver {
     address public constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address public constant BASE_WETH = 0x4200000000000000000000000000000000000006;
 
+    // Verified Base Mainnet Router Addresses
+    address public constant UNISWAP_V3_ROUTER = 0x2626664c2603336E57B271c5C0b26F421741e481;
+    address public constant SUSHISWAP_ROUTER  = 0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891;
+
     event FlashLoanRequested(address indexed asset, uint256 amount);
     event FlashLoanExecuted(
         address indexed asset,
@@ -81,10 +87,10 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver {
         uint256 netProfit,
         uint256 timestamp
     );
-    event ProfitWithdrawn(address indexed token, uint256 amount, address indexed to);
+    event ProfitSwept(address indexed token, uint256 amount, address indexed to);
 
     error Unauthorized();
-    error UnprofitableArbitrage(uint256 totalRepayment, uint256 finalBalance);
+    error UnprofitableArbitrage(uint256 totalDebt, uint256 currentBalance);
     error InvalidInitiator();
 
     modifier onlyOwner() {
@@ -99,39 +105,163 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver {
     }
 
     /**
-     * @notice Initiates a flash loan in USDC
-     * @param amount The principal amount to borrow (6 decimals)
+     * @notice Initiates a flash loan in USDC for automated arbitrage
+     * @param amount The principal amount to borrow (6 decimals, e.g. 10000000000 for 10k USDC)
      */
     function requestFlashLoanUSDC(uint256 amount) external onlyOwner {
         emit FlashLoanRequested(BASE_USDC, amount);
         bytes memory params = abi.encode(
-            0x2626664c2603336E57B271c5C0b26F421741e481, // Uniswap V3 Router
-            0xCF77a3bA9A5Ca399b7C97c74884694265541626F, // Aerodrome Router
+            UNISWAP_V3_ROUTER,
+            SUSHISWAP_ROUTER,
             BASE_WETH,
-            0,
-            amount + (amount * 9) / 10000
+            uint24(500), // 0.05% Uni V3 WETH/USDC fee tier
+            true         // Buy on Uni V3, Sell on SushiSwap
         );
         POOL.flashLoanSimple(address(this), BASE_USDC, amount, params, 0);
     }
 
     /**
-     * @notice Initiates a flash loan in WETH
-     * @param amount The principal amount to borrow (18 decimals)
+     * @notice Initiates a flash loan in USDC with reverse DEX direction
      */
-    function requestFlashLoanWETH(uint256 amount) external onlyOwner {
-        emit FlashLoanRequested(BASE_WETH, amount);
+    function requestFlashLoanUSDCReverse(uint256 amount) external onlyOwner {
+        emit FlashLoanRequested(BASE_USDC, amount);
         bytes memory params = abi.encode(
-            0x2626664c2603336E57B271c5C0b26F421741e481, // Uniswap V3 Router
-            0xCF77a3bA9A5Ca399b7C97c74884694265541626F, // Aerodrome Router
-            BASE_USDC,
-            0,
-            amount + (amount * 9) / 10000
+            SUSHISWAP_ROUTER,
+            UNISWAP_V3_ROUTER,
+            BASE_WETH,
+            uint24(500),
+            false        // Buy on SushiSwap, Sell on Uni V3
         );
-        POOL.flashLoanSimple(address(this), BASE_WETH, amount, params, 0);
+        POOL.flashLoanSimple(address(this), BASE_USDC, amount, params, 0);
     }
 
     /**
-     * @notice Get balance of token or native ETH held in contract
+     * @notice Flexible Arbitrage Trigger with custom routing & direction
+     */
+    function requestArbitrage(
+        address asset,
+        uint256 amount,
+        address routerBuy,
+        address routerSell,
+        address intermediateToken,
+        uint24 poolFee,
+        bool isBuyOnUniV3
+    ) external onlyOwner {
+        bytes memory params = abi.encode(
+            routerBuy,
+            routerSell,
+            intermediateToken,
+            poolFee,
+            isBuyOnUniV3
+        );
+        POOL.flashLoanSimple(address(this), asset, amount, params, 0);
+    }
+
+    /**
+     * @notice Aave V3 Flash Loan Execution Callback
+     */
+    function executeOperation(
+        address asset,
+        uint256 amount,
+        uint256 premium,
+        address initiator,
+        bytes calldata params
+    ) external override returns (bool) {
+        if (msg.sender != address(POOL)) revert Unauthorized();
+        if (initiator != address(this)) revert InvalidInitiator();
+
+        (
+            address routerBuy,
+            address routerSell,
+            address intermediateToken,
+            uint24 poolFee,
+            bool isBuyOnUniV3
+        ) = abi.decode(params, (address, address, address, uint24, bool));
+
+        if (poolFee == 0) poolFee = 500;
+
+        // 1. STEP A: Swap borrowed asset -> intermediateToken on DEX A
+        IERC20(asset).approve(routerBuy, amount);
+        uint256 intermediateBalance;
+
+        if (isBuyOnUniV3) {
+            ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+                tokenIn: asset,
+                tokenOut: intermediateToken,
+                fee: poolFee,
+                recipient: address(this),
+                deadline: block.timestamp + 120,
+                amountIn: amount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+            intermediateBalance = ISwapRouter(routerBuy).exactInputSingle(swapParams);
+        } else {
+            address[] memory path = new address[](2);
+            path[0] = asset;
+            path[1] = intermediateToken;
+            uint[] memory amountsOut = IUniswapV2Router(routerBuy).swapExactTokensForTokens(
+                amount,
+                0,
+                path,
+                address(this),
+                block.timestamp + 120
+            );
+            intermediateBalance = amountsOut[1];
+        }
+
+        // 2. STEP B: Swap intermediateToken -> original asset on DEX B
+        IERC20(intermediateToken).approve(routerSell, intermediateBalance);
+        if (isBuyOnUniV3) {
+            address[] memory path = new address[](2);
+            path[0] = intermediateToken;
+            path[1] = asset;
+            IUniswapV2Router(routerSell).swapExactTokensForTokens(
+                intermediateBalance,
+                0,
+                path,
+                address(this),
+                block.timestamp + 120
+            );
+        } else {
+            ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+                tokenIn: intermediateToken,
+                tokenOut: asset,
+                fee: poolFee,
+                recipient: address(this),
+                deadline: block.timestamp + 120,
+                amountIn: intermediateBalance,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+            ISwapRouter(routerSell).exactInputSingle(swapParams);
+        }
+
+        // 3. Exact Repayment Calculation
+        uint256 totalDebt = amount + premium;
+        uint256 currentBalance = IERC20(asset).balanceOf(address(this));
+
+        // Enforce Zero-Loss Invariant:
+        if (currentBalance < totalDebt) {
+            revert UnprofitableArbitrage(totalDebt, currentBalance);
+        }
+
+        // 4. Repay Aave V3 Pool
+        IERC20(asset).approve(address(POOL), totalDebt);
+
+        // 5. AUTOMATIC PROFIT SWEEP: Instantly transfer all net surplus to owner Coinbase Wallet
+        uint256 netProfit = currentBalance - totalDebt;
+        if (netProfit > 0) {
+            IERC20(asset).transfer(owner, netProfit);
+            emit ProfitSwept(asset, netProfit, owner);
+        }
+
+        emit FlashLoanExecuted(asset, amount, premium, netProfit, block.timestamp);
+        return true;
+    }
+
+    /**
+     * @notice Get balance of any token or native ETH held in contract
      */
     function getBalance(address token) external view returns (uint256) {
         if (token == address(0)) {
@@ -141,120 +271,20 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver {
     }
 
     /**
-     * @notice Initiates a flash loan through Aave V3
-     * @param asset The token to borrow (e.g. WETH or USDC)
-     * @param amount The principal amount to borrow
-     * @param params Encoded routing and minimum profit parameters
-     */
-    function requestFlashLoan(
-        address asset,
-        uint256 amount,
-        bytes calldata params
-    ) external onlyOwner {
-        POOL.flashLoanSimple(
-            address(this),
-            asset,
-            amount,
-            params,
-            0 // referralCode
-        );
-    }
-
-    /**
-     * @notice Aave V3 callback triggered after receiving flash loan liquidity
-     * @dev Must repay amount + premium (0.09% fee) or the entire transaction reverts.
-     */
-    function executeOperation(
-        address asset,
-        uint256 amount,
-        uint256 premium,
-        address initiator,
-        bytes calldata params
-    ) external override returns (bool) {
-        // 1. Authenticate caller is the legitimate Aave Pool
-        if (msg.sender != address(POOL)) revert Unauthorized();
-        if (initiator != address(this)) revert InvalidInitiator();
-
-        // 2. Decode execution parameters (Routers, intermediate tokens, slippage floors)
-        (
-            address routerA,
-            address routerB,
-            address intermediateToken,
-            uint256 minIntermediateReturn,
-            uint256 minFinalReturn
-        ) = abi.decode(params, (address, address, address, uint256, uint256));
-
-        // 3. Step A: Swap borrowed asset -> intermediateToken on DEX A (e.g. Uniswap V3)
-        IERC20(asset).approve(routerA, amount);
-        
-        // Example Uniswap V3 swap execution with strict minimum return
-        ISwapRouter.ExactInputSingleParams memory swapParamsA = ISwapRouter.ExactInputSingleParams({
-            tokenIn: asset,
-            tokenOut: intermediateToken,
-            fee: 3000, // 0.3% pool
-            recipient: address(this),
-            deadline: block.timestamp + 60,
-            amountIn: amount,
-            amountOutMinimum: minIntermediateReturn,
-            sqrtPriceLimitX96: 0
-        });
-        uint256 intermediateReceived = ISwapRouter(routerA).exactInputSingle(swapParamsA);
-
-        // 4. Step B: Swap intermediateToken -> original asset on DEX B (e.g. SushiSwap)
-        IERC20(intermediateToken).approve(routerB, intermediateReceived);
-        address[] memory path = new address[](2);
-        path[0] = intermediateToken;
-        path[1] = asset;
-        
-        uint[] memory amountsOut = IUniswapV2Router(routerB).swapExactTokensForTokens(
-            intermediateReceived,
-            minFinalReturn,
-            path,
-            address(this),
-            block.timestamp + 60
-        );
-        uint256 finalBalance = amountsOut[1];
-
-        // 5. Calculate repayment obligation (Principal + 0.09% Aave premium)
-        uint256 totalDebt = amount + premium;
-
-        // 6. Enforce zero-loss invariant: Final balance MUST exceed debt + profit threshold
-        if (finalBalance < totalDebt) {
-            revert UnprofitableArbitrage(totalDebt, finalBalance);
-        }
-
-        uint256 netProfit = finalBalance - totalDebt;
-
-        // 7. Approve Aave Pool to pull totalDebt back
-        IERC20(asset).approve(address(POOL), totalDebt);
-
-        // 8. AUTOMATIC PROFIT SWEEP: Route net profit directly to owner's Coinbase Wallet
-        if (netProfit > 0) {
-            IERC20(asset).transfer(owner, netProfit);
-        }
-
-        emit FlashLoanExecuted(asset, amount, premium, netProfit, block.timestamp);
-        return true;
-    }
-
-    /**
-     * @notice Withdraw accumulated profits to owner
+     * @notice Owner emergency withdrawal function
      */
     function withdraw(address token) external onlyOwner {
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        if (balance > 0) {
-            IERC20(token).transfer(owner, balance);
-            emit ProfitWithdrawn(token, balance, owner);
-        }
-    }
-
-    /**
-     * @notice Rescue native ETH
-     */
-    function withdrawETH() external onlyOwner {
-        uint256 balance = address(this).balance;
-        if (balance > 0) {
-            payable(owner).transfer(balance);
+        if (token == address(0)) {
+            uint256 bal = address(this).balance;
+            if (bal > 0) {
+                (bool s, ) = owner.call{value: bal}("");
+                require(s, "ETH transfer failed");
+            }
+        } else {
+            uint256 bal = IERC20(token).balanceOf(address(this));
+            if (bal > 0) {
+                IERC20(token).transfer(owner, bal);
+            }
         }
     }
 

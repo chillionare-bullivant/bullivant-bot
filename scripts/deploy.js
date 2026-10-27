@@ -50,12 +50,11 @@ async function main() {
   console.log("Contract Owner Address:     ", OWNER_ADDRESS);
 
   // 2. Attach Signer explicitly to ContractFactory (prevents UNSUPPORTED_OPERATION error)
-  console.log("\n📦 Compiling & broadcasting FlashLoanLeverage contract...");
-  const FlashLoanLeverage = await hre.ethers.getContractFactory("FlashLoanLeverage", signer);
+  console.log("\n📦 Compiling & broadcasting FlashLoanArbitrageReceiver (with live cross-DEX atomic swap routing)...");
+  const FlashLoanArbitrage = await hre.ethers.getContractFactory("FlashLoanArbitrageReceiver", signer);
 
-  const contract = await FlashLoanLeverage.deploy(
-    AAVE_V3_BASE_ADDRESSES_PROVIDER,
-    OWNER_ADDRESS
+  const contract = await FlashLoanArbitrage.deploy(
+    AAVE_V3_BASE_ADDRESSES_PROVIDER
   );
 
   console.log("⏳ Waiting for transaction confirmation on Base...");

@@ -34,6 +34,7 @@ const AERO_POOL_ABI = [
 
 const CONTRACT_ABI = [
   "function requestFlashLoanUSDC(uint256 amount) external",
+  "function requestFlashLoanUSDCReverse(uint256 amount) external",
   "function owner() view returns (address)"
 ];
 
@@ -139,9 +140,16 @@ async function main() {
           const contract = new ethers.Contract(targetContract, CONTRACT_ABI, signer);
           try {
             const parsedAmount = ethers.parseUnits(borrowAmountUsdc.toString(), 6);
-            const tx = await contract.requestFlashLoanUSDC(parsedAmount);
-            console.log(`   🎉 Transaction Confirmed on Base! TX: ${tx.hash}`);
+            let tx;
+            if (buyDex === "Uniswap V3") {
+              tx = await contract.requestFlashLoanUSDC(parsedAmount, { gasLimit: 650000 });
+            } else {
+              tx = await contract.requestFlashLoanUSDCReverse(parsedAmount, { gasLimit: 650000 });
+            }
+            console.log(`   🎉 Transaction Broadcast on Base! TX: ${tx.hash}`);
             console.log(`   BaseScan: https://basescan.org/tx/${tx.hash}`);
+            await tx.wait(1);
+            console.log(`   ✅ Confirmed on Base! Profit swept to Coinbase Wallet (${signer.address})`);
           } catch (txErr) {
             console.warn(`   Notice on execution: ${txErr.reason || txErr.message}`);
           }
