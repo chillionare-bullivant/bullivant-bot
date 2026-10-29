@@ -254,7 +254,7 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver, IFlashLoanRecip
         address debtAsset,
         address user,
         uint256 debtToCover
-    ) external onlyOwner {
+    ) public onlyOwner {
         emit FlashLoanRequested(debtAsset, debtToCover);
         LiquidationParams memory params = LiquidationParams({
             execType: ExecutionType.LIQUIDATION,
@@ -263,6 +263,18 @@ contract FlashLoanArbitrageReceiver is IFlashLoanSimpleReceiver, IFlashLoanRecip
             debtToCover: debtToCover
         });
         POOL.flashLoanSimple(address(this), debtAsset, debtToCover, abi.encode(params), 0);
+    }
+
+    /**
+     * @notice Blueprint alias: External trigger for Node.js liquidation bot
+     */
+    function executeLiquidation(
+        address collateralAsset,
+        address debtAsset,
+        address userToLiquidate,
+        uint256 debtToCover
+    ) external onlyOwner {
+        requestFlashLiquidation(collateralAsset, debtAsset, userToLiquidate, debtToCover);
     }
 
     // =========================================================================
