@@ -1730,17 +1730,24 @@ async function startServer() {
       }
     ];
 
-    const alerts = liquidationData?.alerts && liquidationData.alerts.length > 0
-      ? liquidationData.alerts
-      : defaultAlerts;
+    const rawAlerts = liquidationData?.alerts || [];
+    const combined = [...defaultAlerts];
+    for (const a of rawAlerts) {
+      const idx = combined.findIndex((x: any) => x.borrower.toLowerCase() === a.borrower.toLowerCase());
+      if (idx >= 0) {
+        combined[idx] = a;
+      } else {
+        combined.push(a);
+      }
+    }
 
     res.json({
       success: true,
       timestamp: liquidationData?.timestamp || new Date().toISOString(),
       pool: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
       network: "Base Mainnet (Chain ID 8453)",
-      totalMonitored: alerts.length,
-      alerts,
+      totalMonitored: combined.length,
+      alerts: combined,
     });
   });
 

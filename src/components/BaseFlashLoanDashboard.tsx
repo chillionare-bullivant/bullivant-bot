@@ -964,8 +964,8 @@ export function BaseFlashLoanDashboard() {
 
                   <div className="text-right">
                     <span className="text-xs font-mono text-zinc-500 block">Net Return</span>
-                    <span className="text-base font-mono font-black text-emerald-400">
-                      +${opp.netProfitUsd} USD
+                    <span className={`text-base font-mono font-black ${opp.netProfitUsd > 0 ? "text-emerald-400" : "text-zinc-500"}`}>
+                      {opp.netProfitUsd > 0 ? `+$${opp.netProfitUsd} USD` : `-$${Math.abs(opp.netProfitUsd).toFixed(2)} USD`}
                     </span>
                   </div>
                 </div>
@@ -978,18 +978,27 @@ export function BaseFlashLoanDashboard() {
                 <button
                   type="button"
                   onClick={() => handleExecuteOpportunity(opp)}
-                  disabled={executingOppId === opp.id}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all disabled:opacity-50"
+                  disabled={executingOppId === opp.id || opp.netProfitUsd <= 0}
+                  className={`w-full py-2.5 rounded-xl font-bold text-xs font-mono flex items-center justify-center gap-2 transition-all ${
+                    opp.netProfitUsd > 0
+                      ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white cursor-pointer shadow-md"
+                      : "bg-zinc-800/80 text-zinc-500 cursor-not-allowed border border-zinc-800"
+                  }`}
                 >
                   {executingOppId === opp.id ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       <span>Harvesting +${opp.netProfitUsd}...</span>
                     </>
-                  ) : (
+                  ) : opp.netProfitUsd > 0 ? (
                     <>
                       <Zap className="w-3.5 h-3.5 text-yellow-300" />
                       <span>Execute Arbitrage (Harvest +${opp.netProfitUsd} USD)</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Spread Below Fee Threshold (Unprofitable)</span>
                     </>
                   )}
                 </button>
