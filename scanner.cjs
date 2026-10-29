@@ -185,46 +185,79 @@ async function main() {
   // ---------------------------------------------------------------------------
   async function scanLiquidations() {
     try {
+      const alerts = [];
+      const now = Date.now();
+
       for (const borrower of trackedBorrowers) {
-        const data = await aavePoolContract.getUserAccountData(borrower);
-        const totalDebtBase = data.totalDebtBase;
-        const hf = data.healthFactor;
+        try {
+          const data = await aavePoolContract.getUserAccountData(borrower);
+          const totalDebtBase = Number(data.totalDebtBase) / 1e8; // Aave base currency is 8 decimals
+          const totalCollateralBase = Number(data.totalCollateralBase) / 1e8;
+          const hfRaw = data.healthFactor;
+          const hf = hfRaw > 100000000000000000000n ? 999.0 : Number(hfRaw) / 1e18;
 
-        // Health factor < 1.0 (represented as 1e18)
-        if (totalDebtBase > 0n && hf < 1000000000000000000n) {
-          const hfFloat = Number(hf) / 1e18;
-          console.log(`\n🚨 [LIQUIDATION OPPORTUNITY] Account ${borrower} Health Factor: ${hfFloat.toFixed(3)} (< 1.0)`);
-          
-          if (signer && targetContract && targetContract.startsWith("0x")) {
-            const contract = new ethers.Contract(targetContract, CONTRACT_ABI, signer);
-            try {
-              // Liquidate 50% of the position (standard Aave close factor)
-              const debtToCover = totalDebtBase / 2n;
-              console.log(`   🔍 Simulating Flash Liquidation (Zero Gas)...`);
-              await contract.executeLiquidation.staticCall(
-                WETH_ADDRESS,
-                USDC_ADDRESS,
-                borrower,
-                debtToCover
-              );
+          const isLiquidationReady = hf < 1.0 && totalDebtBase > 0;
+          const isAtRisk = hf >= 1.0 && hf < 1.15 && totalDebtBase > 0;
 
-              console.log(`   ⚡ Liquidation Simulation Confirmed! Executing on Base...`);
-              const tx = await contract.executeLiquidation(
-                WETH_ADDRESS,
-                USDC_ADDRESS,
-                borrower,
-                debtToCover,
-                { gasLimit: 850000 }
-              );
-              console.log(`   🎉 Liquidation Broadcast! TX: ${tx.hash}`);
-              await tx.wait(1);
-              console.log(`   ✅ Confirmed! 5%-10% Liquidation Bonus Swept to Coinbase Wallet!`);
-            } catch (liqErr) {
-              console.warn(`   🛡️ Zero-Gas Guard: Liquidation bonus does not clear swap slippage. Skipping ($0.00 gas spent).`);
+          alerts.push({
+            borrower,
+            collateralAsset: "WETH",
+            debtAsset: "USDC",
+            collateralAddress: WETH_ADDRESS,
+            debtAddress: USDC_ADDRESS,
+            collateralUsd: parseFloat(totalCollateralBase.toFixed(2)),
+            debtUsd: parseFloat(totalDebtBase.toFixed(2)),
+            healthFactor: parseFloat(hf.toFixed(3)),
+            status: isLiquidationReady ? "LIQUIDATION_READY" : isAtRisk ? "HIGH_RISK_WATCHLIST" : "COLLATERALIZED_SAFE",
+            liquidationBonusPct: 5.0,
+            estimatedBonusUsd: parseFloat(((totalDebtBase * 0.5) * 0.05).toFixed(2)),
+            debtToCoverUsdc: parseFloat((totalDebtBase * 0.5).toFixed(2))
+          });
+
+          if (isLiquidationReady) {
+            console.log(`\n🚨 [LIQUIDATION OPPORTUNITY] Account ${borrower} Health Factor: ${hf.toFixed(3)} (< 1.0)`);
+            if (signer && targetContract && targetContract.startsWith("0x")) {
+              const contract = new ethers.Contract(targetContract, CONTRACT_ABI, signer);
+              try {
+                const debtToCover = data.totalDebtBase / 2n;
+                console.log(`   🔍 Simulating Flash Liquidation (Zero Gas)...`);
+                await contract.executeLiquidation.staticCall(
+                  WETH_ADDRESS,
+                  USDC_ADDRESS,
+                  borrower,
+                  debtToCover
+                );
+
+                console.log(`   ⚡ Liquidation Simulation Confirmed! Executing on Base...`);
+                const tx = await contract.executeLiquidation(
+                  WETH_ADDRESS,
+                  USDC_ADDRESS,
+                  borrower,
+                  debtToCover,
+                  { gasLimit: 850000 }
+                );
+                console.log(`   🎉 Liquidation Broadcast! TX: ${tx.hash}`);
+                await tx.wait(1);
+                console.log(`   ✅ Confirmed! 5%-10% Liquidation Bonus Swept to Coinbase Wallet!`);
+              } catch (liqErr) {
+                console.warn(`   🛡️ Zero-Gas Guard: Liquidation bonus does not clear swap slippage. Skipping ($0.00 gas spent).`);
+              }
             }
           }
-        }
+        } catch {}
       }
+
+      try {
+        fs.writeFileSync(
+          path.resolve(process.cwd(), "live_liquidations.json"),
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            pool: AAVE_V3_POOL_ADDRESS,
+            totalMonitored: alerts.length,
+            alerts
+          }, null, 2)
+        );
+      } catch {}
     } catch (e) {
       // Background check
     }

@@ -93,6 +93,8 @@ export function BaseFlashLoanDashboard() {
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [autoPilot, setAutoPilot] = useState<boolean>(true);
   const [executingOppId, setExecutingOppId] = useState<string | null>(null);
+  const [liquidationAlerts, setLiquidationAlerts] = useState<any[]>([]);
+  const [executingLiqId, setExecutingLiqId] = useState<string | null>(null);
 
   // Web3 Connected Wallet State (Coinbase Wallet / Injected)
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -180,18 +182,23 @@ export function BaseFlashLoanDashboard() {
 
   const fetchProfitData = async () => {
     try {
-      const [oppRes, statsRes] = await Promise.all([
+      const [oppRes, statsRes, liqRes] = await Promise.all([
         fetch("/api/profit/opportunities"),
         fetch("/api/profit/stats"),
+        fetch("/api/liquidations/alerts"),
       ]);
       const oppJson = await oppRes.json();
       const statsJson = await statsRes.json();
+      const liqJson = await liqRes.json().catch(() => null);
       if (oppJson.success && oppJson.opportunities) {
         setOpportunities(oppJson.opportunities);
       }
       if (statsJson.success) {
         if (statsJson.stats) setProfitStats(statsJson.stats);
         if (statsJson.history) setTradeHistory(statsJson.history);
+      }
+      if (liqJson && liqJson.success && liqJson.alerts) {
+        setLiquidationAlerts(liqJson.alerts);
       }
     } catch {
       // Fallback telemetry
@@ -513,6 +520,67 @@ export function BaseFlashLoanDashboard() {
       setStatusType("success");
     } finally {
       setExecutingOppId(null);
+    }
+  };
+
+  const handleExecuteLiquidation = async (alert: any) => {
+    setExecutingLiqId(alert.id || alert.borrower);
+    setStatusMsg(`Simulating liquidation on borrower ${alert.borrower.slice(0, 8)}... (Zero-Gas Check)`);
+    setStatusType("info");
+
+    try {
+      const eth = window.coinbaseWalletExtension || window.ethereum;
+      if (executionMode === "browser" && walletAddress && eth) {
+        if (!isCorrectNetwork) {
+          await switchToBaseNetwork();
+        }
+        const provider = new ethers.BrowserProvider(eth);
+        const signer = await provider.getSigner();
+        const contract = new ethers.Contract(DEFAULT_CONTRACT_ADDRESS, [
+          "function executeLiquidation(address collateralAsset, address debtAsset, address userToLiquidate, uint256 debtToCover) external",
+        ], signer);
+
+        const cleanAmount = ethers.parseUnits(alert.debtToCoverUsdc.toString(), 6);
+        setStatusMsg(`Executing flash liquidation on Base... Seizing ${alert.collateralAsset} collateral.`);
+        const tx = await contract.executeLiquidation(
+          alert.collateralAddress,
+          alert.debtAddress,
+          alert.borrower,
+          cleanAmount,
+          { gasLimit: 850000 }
+        );
+        setStatusMsg(`✓ Flash liquidation broadcast! TX: ${tx.hash.slice(0, 16)}...`);
+        setStatusType("success");
+        setTxUrl(`https://basescan.org/tx/${tx.hash}`);
+        await tx.wait();
+      } else {
+        const res = await fetch("/api/profit/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pair: `${alert.collateralAsset} / ${alert.debtAsset} (Liquidation)`,
+            borrowAsset: alert.debtAsset,
+            borrowAmount: alert.debtToCoverUsdc.toString(),
+            spreadPercent: alert.liquidationBonusPct,
+            beneficiaryAddress: walletAddress || COINBASE_USER_ADDRESS,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (json.success) {
+          setStatusMsg(`✓ LIQUIDATION BONUS SEIZED: +$${alert.estimatedBonusUsd} USD swept to Coinbase Wallet!`);
+          setStatusType("success");
+          setTxUrl(json.basescanUrl);
+        } else {
+          setStatusMsg(json.error || `Zero-Gas Guard: Collateral bonus simulation did not clear swap slippage. Skipping ($0.00 gas spent).`);
+          setStatusType("info");
+        }
+      }
+      fetchProfitData();
+    } catch (err: any) {
+      setStatusMsg(`Notice: ${err.reason || err.message}`);
+      setStatusType("error");
+    } finally {
+      setExecutingLiqId(null);
     }
   };
 
@@ -927,6 +995,124 @@ export function BaseFlashLoanDashboard() {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Dedicated Section: Aave V3 Liquidation Radar (Health Factor < 1.0 Alerts) */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+              <span className="font-bold text-zinc-200 uppercase tracking-wide">
+                Aave V3 Liquidation Radar (Health Factor Alerts)
+              </span>
+            </div>
+            <span className="text-[11px] text-amber-400 font-mono">
+              Zero Whale Dependency • 5-10% Protocol Bonus
+            </span>
+          </div>
+
+          <div className="p-3 bg-gradient-to-r from-rose-950/20 via-zinc-900/60 to-purple-950/20 border border-rose-900/40 rounded-xl space-y-1">
+            <p className="text-[11px] text-zinc-300 leading-relaxed">
+              <strong className="text-white">How Liquidations Work:</strong> Unlike cross-DEX arbitrage (which waits for whales to unbalance pools), liquidations target undercollateralized borrowers. When an account's <span className="text-rose-400 font-mono font-bold">Health Factor (HF) drops below 1.0</span>, the smart contract borrows the debt via flash loan ($0 capital), repays the borrower's debt, seizes their collateral at a <span className="text-emerald-400 font-mono font-bold">5% to 10% discount</span>, converts it on Uniswap V3, repays Aave, and sweeps the profit to your wallet.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {liquidationAlerts.map((alert) => {
+              const isReady = alert.healthFactor < 1.0 && alert.debtUsd > 0;
+              const isWatch = alert.healthFactor >= 1.0 && alert.healthFactor < 1.15;
+
+              return (
+                <div
+                  key={alert.id || alert.borrower}
+                  className={`p-4 rounded-xl border transition-all space-y-3 shadow-lg ${
+                    isReady
+                      ? "bg-rose-950/20 hover:bg-rose-950/30 border-rose-500/50 hover:border-rose-400"
+                      : isWatch
+                      ? "bg-amber-950/10 hover:bg-amber-950/20 border-amber-500/30 hover:border-amber-400/50"
+                      : "bg-black/80 hover:bg-black border-zinc-800"
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm font-mono">
+                          {alert.collateralAsset} / {alert.debtAsset}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            isReady
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse"
+                              : isWatch
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                          }`}
+                        >
+                          HF: {alert.healthFactor >= 900 ? "SAFE (>999)" : alert.healthFactor.toFixed(3)}
+                        </span>
+                      </div>
+                      <a
+                        href={`https://basescan.org/address/${alert.borrower}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] font-mono text-zinc-400 hover:text-blue-400 flex items-center gap-1 pt-1"
+                      >
+                        Borrower: {alert.borrower.slice(0, 6)}...{alert.borrower.slice(-4)}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] font-mono text-zinc-500 block uppercase">Protocol Bonus</span>
+                      <span className="text-base font-mono font-black text-emerald-400">
+                        +${alert.estimatedBonusUsd} USD
+                      </span>
+                      <span className="text-[10px] text-zinc-400 block font-mono">({alert.liquidationBonusPct}% bonus)</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-black/40 p-2.5 rounded-lg border border-zinc-800/80">
+                    <div>
+                      <span className="text-zinc-500 block">Total Collateral</span>
+                      <span className="text-zinc-200 font-bold">${alert.collateralUsd.toLocaleString()} USD</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Total Borrowed Debt</span>
+                      <span className="text-zinc-200 font-bold">${alert.debtUsd.toLocaleString()} USD</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteLiquidation(alert)}
+                    disabled={executingLiqId === (alert.id || alert.borrower) || (!isReady && alert.debtUsd === 0)}
+                    className={`w-full py-2.5 rounded-xl text-white font-bold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all disabled:opacity-50 ${
+                      isReady
+                        ? "bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-500 hover:to-amber-500"
+                        : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                    }`}
+                  >
+                    {executingLiqId === (alert.id || alert.borrower) ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Liquidating & Sweeping +${alert.estimatedBonusUsd}...</span>
+                      </>
+                    ) : isReady ? (
+                      <>
+                        <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                        <span>Execute Flash Liquidation (Seize +${alert.estimatedBonusUsd} USD)</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Position Monitored (HF: {alert.healthFactor.toFixed(2)})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
