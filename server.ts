@@ -10,10 +10,19 @@ import { createRequire } from "module";
 import { exec, spawn } from "child_process";
 import { WebSocketServer, WebSocket } from "ws";
 
-// Dual CJS / ESM safe path & require resolver
+// Safe dual ESM/CJS path resolution without triggering esbuild import.meta warning in CJS format
+const getRuntimeMetaUrl = () => {
+  try {
+    return new Function("return typeof import.meta !== 'undefined' ? import.meta.url : null")();
+  } catch {
+    return null;
+  }
+};
+const runtimeMetaUrl = getRuntimeMetaUrl();
+
 const __filename = typeof globalThis.__filename !== "undefined"
   ? (globalThis as any).__filename
-  : (typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : path.resolve(process.cwd(), "server.ts"));
+  : (runtimeMetaUrl ? fileURLToPath(runtimeMetaUrl) : path.resolve(process.cwd(), "server.ts"));
 
 const __dirname = typeof globalThis.__dirname !== "undefined"
   ? (globalThis as any).__dirname
@@ -21,7 +30,7 @@ const __dirname = typeof globalThis.__dirname !== "undefined"
 
 const require = typeof globalThis.require === "function" 
   ? globalThis.require 
-  : createRequire(typeof import.meta !== "undefined" && import.meta.url ? import.meta.url : "file:///server.js");
+  : createRequire(runtimeMetaUrl || "file:///server.js");
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, type Content } from "@google/genai";
 import { ethers } from "ethers";
