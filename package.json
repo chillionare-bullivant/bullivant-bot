@@ -33,6 +33,7 @@
     "solana:airdrop": "node solana/airdrop.cjs",
     "solana:client": "node solana/client.cjs",
     "solana:deploy": "bash solana/deploy.sh",
+    "fix:solana:airdrop": "bash fix-solana-airdrop.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
