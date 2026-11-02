@@ -5,14 +5,23 @@ import http from "http";
 import os from "os";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { exec, spawn } from "child_process";
 import { WebSocketServer, WebSocket } from "ws";
 
-// Dual CJS / ESM safe require resolver
+// Dual CJS / ESM safe path & require resolver
+const __filename = typeof globalThis.__filename !== "undefined"
+  ? (globalThis as any).__filename
+  : (typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : path.resolve(process.cwd(), "server.ts"));
+
+const __dirname = typeof globalThis.__dirname !== "undefined"
+  ? (globalThis as any).__dirname
+  : path.dirname(__filename);
+
 const require = typeof globalThis.require === "function" 
   ? globalThis.require 
-  : createRequire(typeof __filename !== "undefined" ? __filename : (typeof import.meta !== "undefined" && import.meta.url ? import.meta.url : "file:///server.js"));
+  : createRequire(typeof import.meta !== "undefined" && import.meta.url ? import.meta.url : "file:///server.js");
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, type Content } from "@google/genai";
 import { ethers } from "ethers";
@@ -6668,6 +6677,14 @@ Please provide a concise, high-impact Strategic Threat Intelligence Assessment f
         if (ptyProcess.kill) ptyProcess.kill();
       } catch (_e) {}
     });
+  });
+
+  httpServer.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`[Port ${PORT}] Address already in use by active runner, continuing gracefully.`);
+    } else {
+      console.error("[HTTP Server Error]", err);
+    }
   });
 
   httpServer.listen(PORT, "0.0.0.0", () => {
