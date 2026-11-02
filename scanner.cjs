@@ -116,7 +116,8 @@ async function main() {
       const aaveFee = (0.05 / 100) * borrowAmountUsdc;
       const dexFees = (0.10 / 100) * borrowAmountUsdc;
       const netProfit = grossProfit - aaveFee - dexFees - 0.005;
-      const isProfitable = netProfit > 0 && spreadPct >= minThresholdPercent;
+      const minNetProfitUsdThreshold = parseFloat(process.env.MIN_NET_PROFIT_USD || "5.00");
+      const isProfitable = netProfit >= minNetProfitUsdThreshold && spreadPct >= minThresholdPercent;
 
       const payload = {
         blockNumber,
@@ -132,6 +133,7 @@ async function main() {
         borrowAmountUsdc,
         grossProfitUsd: parseFloat(grossProfit.toFixed(2)),
         netProfitUsd: parseFloat(netProfit.toFixed(2)),
+        minNetProfitUsdThreshold,
         isProfitable,
         status: isProfitable ? "ARBITRAGE_EXPANDED" : "EQUILIBRIUM_MONITORING"
       };
@@ -142,7 +144,7 @@ async function main() {
 
       const timestamp = new Date().toLocaleTimeString();
       if (isProfitable) {
-        console.log(`\n🔥 [${timestamp} Block #${blockNumber}] PROFITABLE SPREAD DETECTED!`);
+        console.log(`\n🔥 [${timestamp} Block #${blockNumber}] PROFITABLE SPREAD DETECTED (+$${netProfit.toFixed(2)} USD >= $${minNetProfitUsdThreshold})!`);
         console.log(`   Uni V3:  $${uniPriceNum.toFixed(2)} | Aero: $${aeroPriceNum.toFixed(2)} | Spread: ${spreadPct.toFixed(3)}% ($${diff.toFixed(2)}/ETH)`);
         console.log(`   Route:   Borrow ${borrowAmountUsdc} USDC -> Buy on ${buyDex} -> Sell on ${sellDex}`);
 
@@ -151,7 +153,7 @@ async function main() {
           try {
             const parsedAmount = ethers.parseUnits(borrowAmountUsdc.toString(), 6);
             
-            // ZERO-GAS PRE-SIMULATION
+            // STRICT ZERO-GAS PRE-SIMULATION
             if (buyDex === "Uniswap V3") {
               await contract.requestFlashLoanUSDC.staticCall(parsedAmount);
             } else {

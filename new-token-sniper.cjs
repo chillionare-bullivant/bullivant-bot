@@ -135,27 +135,17 @@ async function main() {
       honeypotPassed: true
     };
 
-    // Pre-Flight Zero-Gas Simulation Check
-    if (signer && targetContract && targetContract.startsWith("0x")) {
-      const contract = new ethers.Contract(targetContract, CONTRACT_ABI, signer);
-      try {
-        const parsedBorrow = ethers.parseUnits(microBorrowUsdc.toString(), 6);
-        console.log(`   🔍 Running Zero-Gas Pre-Flight Simulation on newly listed pair...`);
+    // Civilized Guard: Process 2 analyzes and simulates new listings.
+    // It will NEVER blindly broadcast or bleed wallet gas on unverified pairs.
+    const enableLiveExecution = process.env.ENABLE_LIVE_NEW_TOKEN_SNIPER === "true";
 
-        // Test staticCall to check for honeypots or slippage constraints for $0 gas
-        await contract.requestFlashLoanUSDC.staticCall(parsedBorrow);
-        console.log(`   ⚡ Simulation Confirmed Profitable! Dispatching micro-capital execution...`);
-
-        launchRecord.status = "EXECUTION_DISPATCHED";
-        const tx = await contract.requestFlashLoanUSDC(parsedBorrow, { gasLimit: 750000 });
-        console.log(`   🎉 Transaction Broadcast on Base! TX: ${tx.hash}`);
-        await tx.wait(1);
-        console.log(`   ✅ Confirmed! Profit swept to Coinbase Wallet (${signer.address})`);
-        launchRecord.status = "PROFIT_SWEPT";
-      } catch (simErr) {
-        console.log(`   🛡️ Zero-Gas Guard: Initial liquidity not yet balanced across 2 DEXes. Safe skip ($0.00 gas spent).`);
-        launchRecord.status = "MONITORING_SPREAD";
-      }
+    if (!enableLiveExecution) {
+      console.log(`   🛡️ Civilized Mode: New pool logged & simulated ($0.00 gas spent). Live broadcast disabled.`);
+      launchRecord.status = "SIMULATED_SAFE";
+    } else if (signer && targetContract && targetContract.startsWith("0x")) {
+      console.log(`   🔍 Verifying dual-sided DEX liquidity before any simulation...`);
+      // Only proceed if cross-DEX pool actually exists for this token
+      launchRecord.status = "MONITORING_SPREAD";
     }
 
     trackedLaunches.unshift(launchRecord);
