@@ -6148,8 +6148,6 @@ Please provide a concise, high-impact Strategic Threat Intelligence Assessment f
   // LEVEL 2 ACTIVE RUNTIME DEBUGGER APIS
   // AST extraction, SSE Streaming, Live Call Stack, and Conditional Breakpoints
   // ==========================================
-  const { marked } = require("marked");
-
   function validateLevel2Syntax(code: string, language: string): { isValid: boolean; error: string | null } {
     const lang = (language || "").toLowerCase().trim();
     if (lang === "javascript" || lang === "js" || lang === "node") {
@@ -6184,20 +6182,24 @@ Please provide a concise, high-impact Strategic Threat Intelligence Assessment f
     const readmePath = path.join(process.cwd(), "level2-active-runtime", "README.md");
     if (!fs.existsSync(readmePath)) return [];
     const md = fs.readFileSync(readmePath, "utf-8");
-    const tokens = marked.lexer(md);
-    return tokens
-      .filter((t: any) => t.type === "code")
-      .map((t: any, i: number) => {
-        const validation = validateLevel2Syntax(t.text, t.lang);
-        return {
-          id: `block-${i}`,
-          language: t.lang || "text",
-          code: t.text,
-          lineEstimate: t.text.split("\n").length,
-          isValidSyntax: validation.isValid,
-          syntaxError: validation.error,
-        };
+    const blocks: any[] = [];
+    const codeBlockRegex = /```(\w+)?\r?\n([\s\S]*?)```/g;
+    let match;
+    let i = 0;
+    while ((match = codeBlockRegex.exec(md)) !== null) {
+      const lang = match[1] || "text";
+      const code = match[2].trim();
+      const validation = validateLevel2Syntax(code, lang);
+      blocks.push({
+        id: `block-${i++}`,
+        language: lang,
+        code,
+        lineEstimate: code.split("\n").length,
+        isValidSyntax: validation.isValid,
+        syntaxError: validation.error,
       });
+    }
+    return blocks;
   }
 
   app.get("/api/level2/blocks", (_req, res) => {
