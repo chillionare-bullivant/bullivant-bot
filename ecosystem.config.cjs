@@ -47,5 +47,19 @@ module.exports = {
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
     },
+    {
+      name: "solana-program-client",
+      script: "./solana/client.cjs",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "250M",
+      env: {
+        NODE_ENV: "production",
+        SOLANA_RPC_URL: "https://api.devnet.solana.com",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+    },
   ],
 };

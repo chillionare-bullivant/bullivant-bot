@@ -30,11 +30,15 @@
     "run:alchemy": "node alchemy-base-signer.js",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
+    "solana:airdrop": "node solana/airdrop.cjs",
+    "solana:client": "node solana/client.cjs",
+    "solana:deploy": "bash solana/deploy.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@flashbots/ethers-provider-bundle": "^1.0.0",
     "@google/genai": "^2.4.0",
+    "@solana/web3.js": "^1.95.8",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "@xterm/addon-fit": "^0.11.0",
