@@ -34,6 +34,7 @@
     "solana:client": "node solana/client.cjs",
     "solana:deploy": "bash solana/deploy.sh",
     "fix:solana:airdrop": "bash fix-solana-airdrop.sh",
+    "check:solana:balance": "bash check-solana-balance.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
