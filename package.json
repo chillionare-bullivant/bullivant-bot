@@ -35,6 +35,7 @@
     "solana:deploy": "bash solana/deploy.sh",
     "fix:solana:airdrop": "bash fix-solana-airdrop.sh",
     "check:solana:balance": "bash check-solana-balance.sh",
+    "ping:solana:devnet": "bash ping-solana-devnet.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
