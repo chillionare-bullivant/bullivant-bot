@@ -38,6 +38,7 @@
     "ping:solana:devnet": "bash ping-solana-devnet.sh",
     "pow:solana:faucet": "bash pow-faucet-solana.sh",
     "solana:local:validator": "bash local-solana-validator.sh",
+    "solana:interact": "node solana/interact.cjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
