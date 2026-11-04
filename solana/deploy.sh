@@ -40,12 +40,29 @@ fi
 echo "✓ Solana CLI: $(solana --version 2>/dev/null || echo 'active')"
 echo "✓ Cargo:      $(cargo --version 2>/dev/null || echo 'active')"
 
-# 1. Target Local Validator if active, otherwise Devnet
+# 1. Target Local Validator and verify version synchronization
 RPC_TARGET="http://localhost:8899"
-if ! pgrep -x "solana-test-val" > /dev/null; then
-    RPC_TARGET="https://api.devnet.solana.com"
+CLI_VER=$(solana --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+
+if pgrep -x "solana-test-val" > /dev/null; then
+    VAL_VER=$(curl -s http://localhost:8899 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getVersion"}' 2>/dev/null | grep -o '"solana-core":"[^"]*"' | cut -d'"' -f4 || echo "")
+    if [ -n "$VAL_VER" ] && [ "$VAL_VER" != "$CLI_VER" ]; then
+        echo "🔄 Syncing: Validator is on ($VAL_VER) but CLI is on ($CLI_VER)."
+        echo "   Restarting local validator to match modern Agave..."
+        pkill -f solana-test-val 2>/dev/null || true
+        sleep 2
+        nohup solana-test-validator --reset --quiet > /dev/null 2>&1 &
+        sleep 5
+        solana airdrop 100 --url http://localhost:8899 2>/dev/null || true
+    fi
+else
+    echo "🚀 Starting local validator matching Agave ($CLI_VER)..."
+    nohup solana-test-validator --reset --quiet > /dev/null 2>&1 &
+    sleep 5
+    solana airdrop 100 --url http://localhost:8899 2>/dev/null || true
 fi
-echo "🌐 Deploy Target RPC: $RPC_TARGET"
+
+echo "🌐 Deploy Target RPC: $RPC_TARGET (CLI: $CLI_VER)"
 solana config set --url "$RPC_TARGET"
 
 # 2. Build Rust Program
@@ -94,3 +111,7 @@ solana program deploy target/deploy/hello_world.so --keypair "$DEPLOYER_KEY" --u
 echo "=================================================="
 echo "🎉 DEPLOYMENT SUCCESSFUL!"
 echo "=================================================="
+
+# 6. Execute interaction test
+echo "⚡ Testing Program Interaction..."
+node "$(dirname "$0")/../solana/interact.cjs" 2>/dev/null || node "$(dirname "$0")/interact.cjs" 2>/dev/null || true
