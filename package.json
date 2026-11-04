@@ -36,6 +36,7 @@
     "fix:solana:airdrop": "bash fix-solana-airdrop.sh",
     "check:solana:balance": "bash check-solana-balance.sh",
     "ping:solana:devnet": "bash ping-solana-devnet.sh",
+    "pow:solana:faucet": "bash pow-faucet-solana.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
