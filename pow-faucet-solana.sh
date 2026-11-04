@@ -45,7 +45,15 @@ fi
 
 echo "✓ Cargo Version: $(cargo --version)"
 
-# 3. Check / Install devnet-pow CLI
+# 3. Ensure OpenSSL and pkg-config development packages exist on Ubuntu
+if ! command -v pkg-config &> /dev/null || [ ! -f /usr/include/openssl/ssl.h ]; then
+    echo "📦 Installing required Ubuntu OpenSSL dev headers (pkg-config, libssl-dev)..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update -y && apt-get install -y pkg-config libssl-dev build-essential
+    fi
+fi
+
+# 4. Check / Install devnet-pow CLI
 if ! command -v devnet-pow &> /dev/null; then
     echo "📦 Installing official devnet-pow faucet miner..."
     cargo install devnet-pow
