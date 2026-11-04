@@ -8,4 +8,6 @@ description = "Bullivant Isolated Solana Program on Devnet"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-solana-program = ">=1.18, <2.0"
+solana-program = "=1.18.26"
+zeroize_derive = "=1.4.2"
+zeroize = "=1.4.3"

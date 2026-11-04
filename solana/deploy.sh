@@ -50,10 +50,16 @@ solana config set --url "$RPC_TARGET"
 
 # 2. Build Rust Program
 cd "$(dirname "$0")/program"
+
+# Fix edition2024 conflict by pinning zeroize crates
+cargo update -p zeroize_derive --precise 1.4.2 2>/dev/null || true
+cargo update -p zeroize --precise 1.4.3 2>/dev/null || true
+
 # Downgrade lockfile version 4 to version 3 for Solana SBF compatibility
 if [ -f Cargo.lock ]; then
     sed -i 's/version = 4/version = 3/g' Cargo.lock 2>/dev/null || true
 fi
+
 echo "📦 Compiling Solana BPF binary with cargo build-sbf..."
 cargo build-sbf || {
     if [ -f Cargo.lock ]; then
