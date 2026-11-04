@@ -50,6 +50,8 @@ solana config set --url "$RPC_TARGET"
 
 # 2. Build Rust Program
 cd "$(dirname "$0")/program"
+# Clean any incompatible lockfiles created by other cargo versions
+rm -f Cargo.lock
 echo "📦 Compiling Solana BPF binary with cargo build-sbf..."
 cargo build-sbf || cargo-build-sbf
 
@@ -66,8 +68,8 @@ BALANCE=$(solana balance "$DEPLOYER_KEY" | awk '{print $1}')
 echo "💰 Current Balance: $BALANCE SOL"
 
 # 5. Deploy program
-echo "🚀 Deploying BPF binary to Solana Devnet..."
-solana program deploy target/deploy/hello_world.so --keypair "$DEPLOYER_KEY"
+echo "🚀 Deploying BPF binary to Solana ($RPC_TARGET)..."
+solana program deploy target/deploy/hello_world.so --keypair "$DEPLOYER_KEY" --url "$RPC_TARGET"
 
 echo "=================================================="
 echo "🎉 DEPLOYMENT SUCCESSFUL!"
