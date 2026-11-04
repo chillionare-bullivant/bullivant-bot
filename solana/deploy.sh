@@ -50,10 +50,17 @@ solana config set --url "$RPC_TARGET"
 
 # 2. Build Rust Program
 cd "$(dirname "$0")/program"
-# Clean any incompatible lockfiles created by other cargo versions
-rm -f Cargo.lock
+# Downgrade lockfile version 4 to version 3 for Solana SBF compatibility
+if [ -f Cargo.lock ]; then
+    sed -i 's/version = 4/version = 3/g' Cargo.lock 2>/dev/null || true
+fi
 echo "📦 Compiling Solana BPF binary with cargo build-sbf..."
-cargo build-sbf || cargo-build-sbf
+cargo build-sbf || {
+    if [ -f Cargo.lock ]; then
+        sed -i 's/version = 4/version = 3/g' Cargo.lock 2>/dev/null || true
+    fi
+    cargo-build-sbf || cargo build-sbf
+}
 
 # 3. Check for deploy keypair
 DEPLOYER_KEY="$HOME/.config/solana/solana-deployer.json"
