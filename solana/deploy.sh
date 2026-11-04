@@ -51,9 +51,10 @@ solana config set --url "$RPC_TARGET"
 # 2. Build Rust Program
 cd "$(dirname "$0")/program"
 
-# Fix edition2024 conflict by pinning zeroize to 1.3.0 (<1.4 required by curve25519-dalek)
+# Clean cached incompatible zeroize_derive 1.5.0 and stale lockfiles
+rm -rf /root/.cargo/registry/src/*/zeroize_derive-1.5.0* 2>/dev/null || true
+rm -rf /root/.cargo/registry/cache/*/zeroize_derive-1.5.0* 2>/dev/null || true
 rm -f Cargo.lock
-cargo update -p zeroize --precise 1.3.0 2>/dev/null || true
 
 # Downgrade lockfile version 4 to version 3 for Solana SBF compatibility
 if [ -f Cargo.lock ]; then
