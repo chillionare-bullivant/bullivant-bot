@@ -36,7 +36,19 @@ if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
     export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 fi
 
-# 2. Check / Install Rust if cargo is not found
+# 2. Automatically generate Solana CLI config.yml
+mkdir -p "$HOME/.config/solana/cli" "/root/.config/solana/cli" 2>/dev/null || true
+cat <<EOF > "$HOME/.config/solana/cli/config.yml"
+json_rpc_url: "https://api.devnet.solana.com"
+websocket_url: ""
+keypair_path: "$TARGET_KEYPAIR"
+address_labels:
+  "11111111111111111111111111111111": "System Program"
+commitment: "confirmed"
+EOF
+cp -f "$HOME/.config/solana/cli/config.yml" "/root/.config/solana/cli/config.yml" 2>/dev/null || true
+
+# 3. Check / Install Rust if cargo is not found
 if ! command -v cargo &> /dev/null; then
     echo "📦 Rust / Cargo not detected. Installing lightweight Rust toolchain..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y

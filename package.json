@@ -37,6 +37,7 @@
     "check:solana:balance": "bash check-solana-balance.sh",
     "ping:solana:devnet": "bash ping-solana-devnet.sh",
     "pow:solana:faucet": "bash pow-faucet-solana.sh",
+    "solana:local:validator": "bash local-solana-validator.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
