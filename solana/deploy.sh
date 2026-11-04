@@ -8,39 +8,50 @@ echo "=================================================="
 echo "⚡ BULLIVANT SOLANA BUILD & DEPLOY ENGINE"
 echo "=================================================="
 
+# Ensure PATH has Solana and Cargo binaries
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+elif [ -f "/root/.cargo/env" ]; then
+    source "/root/.cargo/env"
+fi
+
+if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
+    export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+fi
+if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 # Check for Solana CLI
 if ! command -v solana &> /dev/null; then
-    echo "⚠️ Solana CLI not detected in PATH. Checking ~/.local/share/solana..."
-    if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
-        export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-    else
-        echo "❌ Please install Solana CLI first:"
-        echo "sh -c \"\$(curl -sSfL https://release.anza.xyz/v1.18.26/install || curl -sSfL https://release.solana.com/v1.18.0/install)\""
-        exit 1
-    fi
+    echo "⚠️ Solana CLI not detected in PATH. Installing..."
+    sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install || curl -sSfL https://release.solana.com/v1.18.0/install)"
+    export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 fi
 
 # Check for Cargo / Rust
 if ! command -v cargo &> /dev/null; then
-    if [ -f "$HOME/.cargo/env" ]; then
-        source "$HOME/.cargo/env"
-    else
-        echo "❌ Rust/Cargo not found. Please install Rust:"
-        echo "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-        exit 1
+    echo "📦 Cargo not detected. Installing via apt..."
+    if command -v apt &> /dev/null; then
+        apt update -y && apt install -y cargo build-essential
     fi
 fi
 
-echo "✓ Solana CLI: $(solana --version)"
-echo "✓ Rustc:      $(rustc --version)"
+echo "✓ Solana CLI: $(solana --version 2>/dev/null || echo 'active')"
+echo "✓ Cargo:      $(cargo --version 2>/dev/null || echo 'active')"
 
-# 1. Setup Devnet configuration
-solana config set --url https://api.devnet.solana.com
+# 1. Target Local Validator if active, otherwise Devnet
+RPC_TARGET="http://localhost:8899"
+if ! pgrep -x "solana-test-val" > /dev/null; then
+    RPC_TARGET="https://api.devnet.solana.com"
+fi
+echo "🌐 Deploy Target RPC: $RPC_TARGET"
+solana config set --url "$RPC_TARGET"
 
 # 2. Build Rust Program
 cd "$(dirname "$0")/program"
-echo "📦 Compiling Solana BPF binary..."
-cargo build-sbf
+echo "📦 Compiling Solana BPF binary with cargo build-sbf..."
+cargo build-sbf || cargo-build-sbf
 
 # 3. Check for deploy keypair
 DEPLOYER_KEY="$HOME/.config/solana/solana-deployer.json"
